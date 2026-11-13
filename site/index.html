@@ -10,7 +10,13 @@
   html, body { height: 100%; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
 
-  #c { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #bgfx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  #c { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; }
+
+  .lm { position: absolute; width: 2in; height: 3in; opacity: 0; pointer-events: none; }
+  .lm svg { width: 100%; height: 100%; fill: var(--glow); stroke: var(--glow); stroke-width: 1.2; }
+  .city { position: absolute; opacity: 0; white-space: nowrap; color: var(--glow);
+    letter-spacing: .08em; pointer-events: none; }
 
   #enter { position: fixed; left: 50%; bottom: 24%; transform: translateX(-50%); z-index: 2;
     font: inherit; font-size: .85rem; letter-spacing: .35em; padding: .9rem 2.6rem;
@@ -30,6 +36,7 @@
 </head>
 <body>
 
+<div id="bgfx"></div>
 <canvas id="c"></canvas>
 <button id="enter">ENTER</button>
 <div id="text">
@@ -39,45 +46,127 @@
 
 <script>
 (() => {
-  const cv = document.getElementById("c"), cx = cv.getContext("2d");
-  const enterBtn = document.getElementById("enter");
-  const textBox = document.getElementById("text");
+  const $ = id => document.getElementById(id);
+  const cv = $("c"), cx = cv.getContext("2d");
+  const bgfx = $("bgfx"), enterBtn = $("enter"), textBox = $("text");
+  const titleEl = $("title"), tagEl = $("tag");
 
-  const N = 260;
-  const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-  const ASSEMBLE_TIME = 3.2;   // seconds for particles to form the orb
-  const sphere = Array.from({ length: N }, (_, i) => {
-    const y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), th = i * GOLDEN;
-    return { x: Math.cos(th) * r, y, z: Math.sin(th) * r };
-  });
+  /* ---------- Content ---------- */
+  const LANDMARKS = [
+    `<path d="M30 3 L33 16 L38 40 L44 88 L36 88 L33 62 L27 62 L24 88 L16 88 L22 40 L27 16 Z"/><rect x="18" y="58" width="24" height="3"/>`,
+    `<path d="M22 90 L22 70 L38 70 L38 90 Z"/><path d="M26 70 L24 34 L36 34 L34 70 Z"/><path d="M33 34 L42 12 L46 14 L38 34 Z"/><circle cx="45" cy="9" r="4"/>`,
+    `<path d="M2 88 L30 26 L58 88 Z"/><path d="M36 88 L46 68 L56 88 Z"/>`,
+    `<path d="M22 90 L22 30 L38 30 L38 90 Z"/><path d="M20 30 L30 4 L40 30 Z"/><circle cx="30" cy="40" r="6" fill="none" stroke-width="1.5"/>`,
+    `<path d="M10 90 L10 70 L16 70 L16 62 Q30 22 44 62 L44 70 L50 70 L50 90 Z"/><path d="M3 90 L3 50 L7 50 L7 90 Z"/><path d="M53 90 L53 50 L57 50 L57 90 Z"/>`,
+    `<path d="M4 84 Q10 22 30 14 Q24 46 28 84 Z"/><path d="M32 84 Q34 34 52 22 Q46 52 56 84 Z"/>`,
+    `<path d="M26 86 L26 42 L8 42 L8 34 L26 34 L26 10 L34 10 L34 34 L52 34 L52 42 L34 42 L34 86 Z"/>`,
+    `<path d="M24 90 L28 44 L22 34 L30 4 L38 34 L32 44 L36 90 Z"/>`
+  ];
 
-  let W = 0, H = 0, particles = [], started = false, startTime = 0, textShown = false;
-  let ctx = null, master = null, lastPhase = 0;
+  const CITIES = ["Paris", "東京 Tokyo", "دبي Dubai", "São Paulo", "Istanbul", "Mumbai", "北京 Beijing",
+    "Roma", "Sydney", "New York", "Lagos", "London", "Bangkok", "Москва", "서울 Seoul", "Nairobi",
+    "القاهرة Cairo", "Rio de Janeiro", "Mexico City", "Singapore", "Buenos Aires", "Reykjavík",
+    "Marrakech", "Kyoto", "Cape Town", "Lima", "Hanoi", "Berlin", "Madrid", "Havana"];
 
+  const FONTS = ["Georgia, serif", "'Courier New', monospace", "'Brush Script MT', cursive",
+    "Impact, sans-serif", "'Palatino Linotype', serif", "'Trebuchet MS', sans-serif",
+    "'Lucida Console', monospace", "'Segoe Script', cursive"];
+
+  /* ---------- Helpers ---------- */
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   const bump = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
-  // Heartbeat: a "lub" and a softer "dub" per cycle (1.1s)
-  const beatPhase = t => (t % 1.1) / 1.1;
-  const beatAmp = t => { const ph = beatPhase(t); return bump(ph, .06, .07) + .6 * bump(ph, .24, .08); };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const rectOf = el => { const r = el.getBoundingClientRect(); return { x1: r.left, y1: r.top, x2: r.right, y2: r.bottom }; };
+  const hit = (a, b, pad = 12) => !(a.x2 + pad < b.x1 || b.x2 + pad < a.x1 || a.y2 + pad < b.y1 || b.y2 + pad < a.y1);
 
-  /* ---------- Canvas setup ---------- */
-  function resize() {
+  /* ---------- Orb geometry (randomised each visit) ---------- */
+  const N = 260, GOLDEN = Math.PI * (3 - Math.sqrt(5));
+  const ASSEMBLE_TIME = 3.2;
+  const BEAT_PERIOD = 2.6, BEAT_DELAY = ASSEMBLE_TIME + 2.5;
+  const PHASE = rnd(0, Math.PI * 2);                       // random starting rotation
+  const sphere = Array.from({ length: N }, (_, i) => {
+    const y = clamp(1 - 2 * (i + .5) / N + rnd(-.01, .01), -1, 1);
+    const r = Math.sqrt(1 - y * y), th = i * GOLDEN + rnd(-.12, .12);   // jittered so no fixed pattern
+    return { x: Math.cos(th) * r, y, z: Math.sin(th) * r };
+  });
+
+  /* ---------- State ---------- */
+  let W = 0, H = 0, cxC = 0, cyC = 0, R = 0, curScale = 1;
+  let particles = [];
+  const heat = new Float32Array(N);
+  let started = false, startTime = 0, textShown = false;
+  let ctx = null, master = null, lastBeat = -1;
+  let routes = [], lastSpawn = -99, nextGap = 1.5;
+  let lastNow = performance.now();
+  const activeEls = new Set();
+
+  /* ---------- Layout ---------- */
+  function layout() {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     W = innerWidth; H = innerHeight;
     cv.width = W * dpr; cv.height = H * dpr;
     cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cxC = W / 2; cyC = H * .42; R = Math.min(W, H) * .16;
     if (!particles.length) {
-      particles = sphere.map((_, i) => ({
-        x: Math.random() * W, y: Math.random() * H,
-        vx: (Math.random() - .5) * .4, vy: (Math.random() - .5) * .4,
-        r: Math.random() * 1.4 + .8, delay: Math.random() * .9,
-        sx: 0, sy: 0
+      particles = sphere.map(() => ({
+        x: rnd(0, W), y: rnd(0, H), vx: rnd(-.2, .2), vy: rnd(-.2, .2),
+        r: rnd(.8, 2.2), delay: rnd(0, .9), sx: 0, sy: 0
       }));
     }
   }
 
-  /* ---------- Sound: space pad, shimmer, hall reverb, heart thump ---------- */
+  /* ---------- Background labels (landmarks + city names) ---------- */
+  function findSpot(el) {
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const blocks = [
+      { x1: cxC - R * 1.5, y1: cyC - R * 1.5, x2: cxC + R * 1.5, y2: cyC + R * 1.5 },
+      rectOf(titleEl), rectOf(tagEl), rectOf(enterBtn)
+    ];
+    activeEls.forEach(e => blocks.push(rectOf(e)));
+    for (let k = 0; k < 60; k++) {
+      const x = rnd(10, W - w - 10), y = rnd(10, H - h - 10);
+      const r = { x1: x, y1: y, x2: x + w, y2: y + h };
+      if (!blocks.some(b => hit(r, b))) return { x, y };
+    }
+    return null;
+  }
+
+  function spawnLabel(kind) {
+    const el = document.createElement("div");
+    if (kind === "lm") {
+      el.className = "lm";
+      el.innerHTML = `<svg viewBox="0 0 60 90">${pick(LANDMARKS)}</svg>`;
+    } else {
+      el.className = "city";
+      el.textContent = pick(CITIES);
+      el.style.fontFamily = pick(FONTS);
+      el.style.fontSize = rnd(14, 30) + "px";
+      el.style.fontStyle = Math.random() < .2 ? "italic" : "normal";
+    }
+    bgfx.appendChild(el);
+    const spot = findSpot(el);
+    if (!spot) { el.remove(); return; }
+    el.style.left = spot.x + "px";
+    el.style.top = spot.y + "px";
+    activeEls.add(el);
+    const anim = el.animate(
+      [{ opacity: 0 }, { opacity: .65, offset: .5 }, { opacity: 0 }],
+      { duration: kind === "lm" ? 9000 : 7000, easing: "ease-in-out" }
+    );
+    anim.onfinish = () => { activeEls.delete(el); el.remove(); };
+  }
+
+  function labelLoop() {
+    let lm = 0, ct = 0;
+    activeEls.forEach(e => e.classList.contains("lm") ? lm++ : ct++);
+    if (lm < 2 && Math.random() < .5) spawnLabel("lm");
+    if (ct < 3) spawnLabel("city");
+    setTimeout(labelLoop, rnd(1800, 2800));
+  }
+
+  /* ---------- Sound ---------- */
   function makeHall(seconds = 6, decay = 2) {
     const len = Math.floor(ctx.sampleRate * seconds);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -119,10 +208,9 @@
     const shimmer = () => {
       if (!ctx) return;
       const notes = [880, 1174.7, 1318.5, 1760];
-      const f = notes[Math.floor(Math.random() * notes.length)];
       const o = ctx.createOscillator(), g = ctx.createGain();
       const t = ctx.currentTime;
-      o.type = "sine"; o.frequency.value = f;
+      o.type = "sine"; o.frequency.value = pick(notes);
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(.05, t + 1.2);
       g.gain.exponentialRampToValueAtTime(.001, t + 4);
@@ -135,88 +223,175 @@
 
   function thump() {
     if (!ctx) return;
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    const t = ctx.currentTime;
+    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
     o.type = "sine";
-    o.frequency.setValueAtTime(90, t);
-    o.frequency.exponentialRampToValueAtTime(40, t + .3);
-    g.gain.setValueAtTime(.5, t);
-    g.gain.exponentialRampToValueAtTime(.001, t + .35);
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(35, t + .45);
+    g.gain.setValueAtTime(.35, t);
+    g.gain.exponentialRampToValueAtTime(.001, t + .6);
     o.connect(g).connect(master);
-    o.start(t); o.stop(t + .4);
+    o.start(t); o.stop(t + .65);
   }
 
-  /* ---------- Start sequence (on ENTER) ---------- */
+  /* ---------- 3D orb math ---------- */
+  function rot(i, t) {
+    const s = sphere[i], a = t * .35 + PHASE, sa = Math.sin(a), ca = Math.cos(a);
+    return { X: s.x * ca + s.z * sa, Y: s.y, Z: -s.x * sa + s.z * ca };
+  }
+  function projAt(i, t) {
+    const p = rot(i, t);
+    return { x: cxC + p.X * R * curScale, y: cyC + p.Y * R * curScale, d: (p.Z + 1) / 2 };
+  }
+
+  // Front-weighted random endpoint: favours the visible face, avoids the poles
+  function pickDot(t) {
+    for (let k = 0; k < 300; k++) {
+      const i = Math.floor(Math.random() * N), p = rot(i, t);
+      const frontW = .12 + .88 * ((p.Z + 1) / 2);
+      const poleDamp = 1 - .7 * p.Y * p.Y;
+      if (Math.random() < frontW * poleDamp) return i;
+    }
+    return Math.floor(Math.random() * N);
+  }
+
+  /* ---------- Routes (great-circle arcs that ride the rotating orb) ---------- */
+  function spawnRoute(t) {
+    const busy = new Set();
+    routes.forEach(r => { busy.add(r.ia); busy.add(r.ib); });
+    for (let k = 0; k < 40; k++) {
+      const ia = pickDot(t), ib = pickDot(t);
+      if (ia === ib || busy.has(ia) || busy.has(ib)) continue;
+      const A = rot(ia, t), B = rot(ib, t);
+      const dot = A.X * B.X + A.Y * B.Y + A.Z * B.Z;
+      if (dot > .6 || dot < -.85) continue;                  // not too close, not near-antipodal
+      if (A.Z + B.Z < -.3) continue;                          // keep the route mostly visible
+      routes.push({ ia, ib, start: t, dur: 2.6 + Math.acos(clamp(dot, -1, 1)) * 1.1, arrived: false });
+      heat[ia] = 1;
+      return;
+    }
+  }
+
+  // Point along the arc from A to B on the sphere, bowed outward so it can cross a pole
+  function arcPoint(ia, ib, u, t) {
+    const A = rot(ia, t), B = rot(ib, t);
+    const dot = clamp(A.X * B.X + A.Y * B.Y + A.Z * B.Z, -1, 1);
+    const w = Math.acos(dot), sw = Math.sin(w);
+    let X, Y, Z;
+    if (sw < 1e-4) {
+      X = A.X + (B.X - A.X) * u; Y = A.Y + (B.Y - A.Y) * u; Z = A.Z + (B.Z - A.Z) * u;
+    } else {
+      const a = Math.sin((1 - u) * w) / sw, b = Math.sin(u * w) / sw;
+      X = a * A.X + b * B.X; Y = a * A.Y + b * B.Y; Z = a * A.Z + b * B.Z;
+    }
+    const lift = 1 + .14 * Math.sin(Math.PI * u);
+    return { x: cxC + X * lift * R * curScale, y: cyC + Y * lift * R * curScale, z: Z };
+  }
+
+  function drawRoutes(elapsed) {
+    routes = routes.filter(r => elapsed - r.start < r.dur + 2.5);
+    routes.forEach(r => {
+      const t = clamp((elapsed - r.start) / r.dur, 0, 1), e = ease(t);
+      const seg = 48;
+
+      // Faint full route
+      cx.beginPath();
+      for (let s = 0; s <= seg; s++) {
+        const p = arcPoint(r.ia, r.ib, s / seg, elapsed);
+        s ? cx.lineTo(p.x, p.y) : cx.moveTo(p.x, p.y);
+      }
+      cx.strokeStyle = "rgba(127,176,255,.18)"; cx.lineWidth = 1; cx.stroke();
+
+      // Travelled red trail and moving dot
+      if (e > 0) {
+        cx.beginPath();
+        for (let s = 0; s <= seg; s++) {
+          const p = arcPoint(r.ia, r.ib, e * s / seg, elapsed);
+          s ? cx.lineTo(p.x, p.y) : cx.moveTo(p.x, p.y);
+        }
+        cx.strokeStyle = "rgba(255,90,90,.85)"; cx.lineWidth = 1.6; cx.stroke();
+        const p = arcPoint(r.ia, r.ib, e, elapsed);
+        cx.fillStyle = "#ff5a5a"; cx.shadowColor = "#ff5a5a"; cx.shadowBlur = 14;
+        cx.beginPath(); cx.arc(p.x, p.y, 3, 0, Math.PI * 2); cx.fill();
+        cx.shadowBlur = 0;
+      }
+
+      if (t >= 1 && !r.arrived) { r.arrived = true; heat[r.ib] = 1; }
+    });
+  }
+
+  /* ---------- Start ---------- */
   function start() {
     if (started) return;
     started = true;
     enterBtn.classList.add("hidden");
-    particles.forEach(p => { p.sx = p.x; p.sy = p.y; }); // remember scattered positions
+    particles.forEach(p => { p.sx = p.x; p.sy = p.y; });
     startTime = performance.now();
     startAudio();
   }
-
   enterBtn.addEventListener("click", start);
   window.addEventListener("keydown", e => { if (e.key === "Enter") start(); });
 
-  /* ---------- Animation loop ---------- */
+  /* ---------- Main loop ---------- */
   function frame(now) {
+    const dt = Math.min(.05, (now - lastNow) / 1000); lastNow = now;
     cx.clearRect(0, 0, W, H);
+
     const elapsed = started ? (now - startTime) / 1000 : 0;
-    const cxC = W / 2, cyC = H * .42, R = Math.min(W, H) * .16;
+    const mix = started ? clamp(elapsed - ASSEMBLE_TIME + .6, 0, 1) : 0;
 
-    const mix = started ? clamp((elapsed - ASSEMBLE_TIME + .6) / 1, 0, 1) : 0;
-    const beat = started ? beatAmp(elapsed) * mix : 0;
-    const scale = 1 + .1 * beat;
-
-    // Heart thump, once per beat cycle
-    if (mix > .9) {
-      const ph = beatPhase(elapsed);
-      if (ph < lastPhase) thump();
-      lastPhase = ph;
+    // Slow, delayed heartbeat
+    const beatMix = started ? clamp((elapsed - BEAT_DELAY) / 3, 0, 1) : 0;
+    const beatT = Math.max(0, elapsed - BEAT_DELAY);
+    const ph = (beatT % BEAT_PERIOD) / BEAT_PERIOD;
+    const beat = beatMix * (bump(ph, .1, .09) + .55 * bump(ph, .3, .1));
+    curScale = 1 + .05 * beat;
+    if (started && beatMix > .5) {
+      const bi = Math.floor(beatT / BEAT_PERIOD);
+      if (bi !== lastBeat) { lastBeat = bi; thump(); }
     }
 
-    // Soft glow behind the orb once it forms
+    // Glow behind the orb
     if (mix > 0) {
-      const g = cx.createRadialGradient(cxC, cyC, R * .2, cxC, cyC, R * 1.8 * scale);
-      g.addColorStop(0, `rgba(127,176,255,${.18 * mix + .08 * beat * mix})`);
+      const g = cx.createRadialGradient(cxC, cyC, R * .2, cxC, cyC, R * 1.8 * curScale);
+      g.addColorStop(0, `rgba(127,176,255,${.18 * mix + .06 * beat})`);
       g.addColorStop(1, "rgba(127,176,255,0)");
       cx.fillStyle = g;
-      cx.beginPath(); cx.arc(cxC, cyC, R * 1.8 * scale, 0, Math.PI * 2); cx.fill();
+      cx.beginPath(); cx.arc(cxC, cyC, R * 1.8 * curScale, 0, Math.PI * 2); cx.fill();
     }
 
-    const ang = elapsed * .35, sa = Math.sin(ang), ca = Math.cos(ang);
+    // Spawn routes (several can run at once)
+    if (started && mix >= 1 && routes.length < 4 && elapsed - lastSpawn > nextGap) {
+      spawnRoute(elapsed);
+      lastSpawn = elapsed;
+      nextGap = rnd(1.2, 2.6);
+    }
+    drawRoutes(elapsed);
 
+    // Cool down red highlights
+    for (let i = 0; i < N; i++) heat[i] *= Math.exp(-dt / 1.6);
+
+    // Particles
     particles.forEach((p, i) => {
       let px, py, alpha, size = p.r;
-
       if (!started) {
-        // Scattered drift
         p.x += p.vx; p.y += p.vy;
         if (p.x < 0 || p.x > W) p.vx *= -1;
         if (p.y < 0 || p.y > H) p.vy *= -1;
         px = p.x; py = p.y; alpha = .55;
       } else {
-        // Assemble into the rotating, beating orb
-        const prog = clamp((elapsed - p.delay) / 2.4, 0, 1);
-        const e = ease(prog);
-        const s = sphere[i];
-        const X = s.x * ca + s.z * sa;
-        const Z = -s.x * sa + s.z * ca;
-        const tx = cxC + X * R * scale;
-        const ty = cyC + s.y * R * scale;
-        px = p.sx + (tx - p.sx) * e;
-        py = p.sy + (ty - p.sy) * e;
-        const depth = (Z + 1) / 2;
-        alpha = (.3 + .7 * depth) * (.4 + .6 * e);
-        size = p.r * (.7 + .6 * depth);
+        const e = ease(clamp((elapsed - p.delay) / 2.4, 0, 1));
+        const P = projAt(i, elapsed);
+        px = p.sx + (P.x - p.sx) * e;
+        py = p.sy + (P.y - p.sy) * e;
+        alpha = (.3 + .7 * P.d) * (.4 + .6 * e);
+        size = p.r * (.7 + .6 * P.d);
       }
-
-      cx.fillStyle = `rgba(127,176,255,${alpha})`;
-      cx.beginPath(); cx.arc(px, py, size, 0, Math.PI * 2); cx.fill();
+      const h = heat[i];
+      const r = Math.round(127 + 128 * h), g = Math.round(176 - 106 * h), b = Math.round(255 - 185 * h);
+      cx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+      cx.beginPath(); cx.arc(px, py, size * (1 + .8 * h), 0, Math.PI * 2); cx.fill();
     });
 
-    // Reveal the text once the orb has formed
     if (started && !textShown && elapsed > ASSEMBLE_TIME + 1.5) {
       textShown = true;
       textBox.classList.add("show");
@@ -225,8 +400,9 @@
     requestAnimationFrame(frame);
   }
 
-  addEventListener("resize", resize);
-  resize();
+  addEventListener("resize", layout);
+  layout();
+  labelLoop();
   requestAnimationFrame(frame);
 })();
 </script>
