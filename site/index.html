@@ -13,10 +13,8 @@
   #bgfx { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   #c { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; }
 
-  .lm { position: absolute; width: 2in; height: 3in; opacity: 0; pointer-events: none; }
-  .lm svg { width: 100%; height: 100%; fill: var(--glow); stroke: var(--glow); stroke-width: 1.2; }
-  .city { position: absolute; opacity: 0; white-space: nowrap; color: var(--glow);
-    letter-spacing: .08em; pointer-events: none; }
+  .city { position: absolute; opacity: 0; white-space: nowrap; text-transform: uppercase;
+    color: var(--muted); letter-spacing: .14em; pointer-events: none; }
 
   #enter { position: fixed; left: 50%; bottom: 24%; transform: translateX(-50%); z-index: 2;
     font: inherit; font-size: .85rem; letter-spacing: .35em; padding: .9rem 2.6rem;
@@ -52,25 +50,27 @@
   const titleEl = $("title"), tagEl = $("tag");
 
   /* ---------- Content ---------- */
-  const LANDMARKS = [
-    `<path d="M30 3 L33 16 L38 40 L44 88 L36 88 L33 62 L27 62 L24 88 L16 88 L22 40 L27 16 Z"/><rect x="18" y="58" width="24" height="3"/>`,
-    `<path d="M22 90 L22 70 L38 70 L38 90 Z"/><path d="M26 70 L24 34 L36 34 L34 70 Z"/><path d="M33 34 L42 12 L46 14 L38 34 Z"/><circle cx="45" cy="9" r="4"/>`,
-    `<path d="M2 88 L30 26 L58 88 Z"/><path d="M36 88 L46 68 L56 88 Z"/>`,
-    `<path d="M22 90 L22 30 L38 30 L38 90 Z"/><path d="M20 30 L30 4 L40 30 Z"/><circle cx="30" cy="40" r="6" fill="none" stroke-width="1.5"/>`,
-    `<path d="M10 90 L10 70 L16 70 L16 62 Q30 22 44 62 L44 70 L50 70 L50 90 Z"/><path d="M3 90 L3 50 L7 50 L7 90 Z"/><path d="M53 90 L53 50 L57 50 L57 90 Z"/>`,
-    `<path d="M4 84 Q10 22 30 14 Q24 46 28 84 Z"/><path d="M32 84 Q34 34 52 22 Q46 52 56 84 Z"/>`,
-    `<path d="M26 86 L26 42 L8 42 L8 34 L26 34 L26 10 L34 10 L34 34 L52 34 L52 42 L34 42 L34 86 Z"/>`,
-    `<path d="M24 90 L28 44 L22 34 L30 4 L38 34 L32 44 L36 90 Z"/>`
-  ];
-
-  const CITIES = ["Paris", "東京 Tokyo", "دبي Dubai", "São Paulo", "Istanbul", "Mumbai", "北京 Beijing",
+  const CITIES = [
+    "Paris", "東京 Tokyo", "دبي Dubai", "São Paulo", "Istanbul", "Mumbai", "北京 Beijing",
     "Roma", "Sydney", "New York", "Lagos", "London", "Bangkok", "Москва", "서울 Seoul", "Nairobi",
     "القاهرة Cairo", "Rio de Janeiro", "Mexico City", "Singapore", "Buenos Aires", "Reykjavík",
-    "Marrakech", "Kyoto", "Cape Town", "Lima", "Hanoi", "Berlin", "Madrid", "Havana"];
+    "Marrakech", "Kyoto", "Cape Town", "Lima", "Hanoi", "Berlin", "Madrid", "Havana",
+    "Barcelona", "Amsterdam", "Vienna", "Prague", "Lisbon", "Athens", "Edinburgh", "Dublin",
+    "Oslo", "Stockholm", "Helsinki", "Copenhagen", "Zurich", "Munich", "Budapest", "Warsaw",
+    "Florence", "Venice", "Santorini", "Dubrovnik", "Seville", "Porto", "Krakow", "Tallinn",
+    "Delhi", "Kathmandu", "Colombo", "Kuala Lumpur", "Bali", "Manila", "Ho Chi Minh", "Taipei",
+    "Hong Kong", "Shanghai", "Osaka", "Seoul", "Chennai", "Doha", "Abu Dhabi", "Muscat",
+    "Tehran", "Jeddah", "Tel Aviv", "Amman", "Beirut", "Addis Ababa", "Accra", "Dakar",
+    "Casablanca", "Tunis", "Johannesburg", "Cairo", "Zanzibar", "Mauritius", "Maldives", "Seychelles",
+    "Los Angeles", "San Francisco", "Chicago", "Miami", "Las Vegas", "Toronto", "Vancouver", "Montreal",
+    "Cancún", "Bogotá", "Santiago", "Quito", "Cusco", "Montevideo", "Caracas", "Panama City",
+    "Honolulu", "Auckland", "Melbourne", "Fiji", "Tahiti", "Queenstown", "Perth", "Brisbane"
+  ];
 
   const FONTS = ["Georgia, serif", "'Courier New', monospace", "'Brush Script MT', cursive",
     "Impact, sans-serif", "'Palatino Linotype', serif", "'Trebuchet MS', sans-serif",
-    "'Lucida Console', monospace", "'Segoe Script', cursive"];
+    "'Lucida Console', monospace", "'Segoe Script', cursive", "'Gill Sans', sans-serif",
+    "'Garamond', serif", "'Verdana', sans-serif", "'Century Gothic', sans-serif"];
 
   /* ---------- Helpers ---------- */
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -85,10 +85,10 @@
   const N = 260, GOLDEN = Math.PI * (3 - Math.sqrt(5));
   const ASSEMBLE_TIME = 3.2;
   const BEAT_PERIOD = 2.6, BEAT_DELAY = ASSEMBLE_TIME + 2.5;
-  const PHASE = rnd(0, Math.PI * 2);                       // random starting rotation
+  const PHASE = rnd(0, Math.PI * 2);
   const sphere = Array.from({ length: N }, (_, i) => {
     const y = clamp(1 - 2 * (i + .5) / N + rnd(-.01, .01), -1, 1);
-    const r = Math.sqrt(1 - y * y), th = i * GOLDEN + rnd(-.12, .12);   // jittered so no fixed pattern
+    const r = Math.sqrt(1 - y * y), th = i * GOLDEN + rnd(-.12, .12);
     return { x: Math.cos(th) * r, y, z: Math.sin(th) * r };
   });
 
@@ -117,7 +117,7 @@
     }
   }
 
-  /* ---------- Background labels (landmarks + city names) ---------- */
+  /* ---------- City names ---------- */
   function findSpot(el) {
     const w = el.offsetWidth, h = el.offsetHeight;
     const blocks = [
@@ -133,18 +133,13 @@
     return null;
   }
 
-  function spawnLabel(kind) {
+  function spawnCity() {
     const el = document.createElement("div");
-    if (kind === "lm") {
-      el.className = "lm";
-      el.innerHTML = `<svg viewBox="0 0 60 90">${pick(LANDMARKS)}</svg>`;
-    } else {
-      el.className = "city";
-      el.textContent = pick(CITIES);
-      el.style.fontFamily = pick(FONTS);
-      el.style.fontSize = rnd(14, 30) + "px";
-      el.style.fontStyle = Math.random() < .2 ? "italic" : "normal";
-    }
+    el.className = "city";
+    el.textContent = pick(CITIES);
+    el.style.fontFamily = pick(FONTS);
+    el.style.fontSize = rnd(14, 28) + "px";
+    el.style.fontStyle = Math.random() < .2 ? "italic" : "normal";
     bgfx.appendChild(el);
     const spot = findSpot(el);
     if (!spot) { el.remove(); return; }
@@ -152,18 +147,15 @@
     el.style.top = spot.y + "px";
     activeEls.add(el);
     const anim = el.animate(
-      [{ opacity: 0 }, { opacity: .65, offset: .5 }, { opacity: 0 }],
-      { duration: kind === "lm" ? 9000 : 7000, easing: "ease-in-out" }
+      [{ opacity: 0 }, { opacity: .4, offset: .5 }, { opacity: 0 }],
+      { duration: 7000, easing: "ease-in-out" }
     );
     anim.onfinish = () => { activeEls.delete(el); el.remove(); };
   }
 
   function labelLoop() {
-    let lm = 0, ct = 0;
-    activeEls.forEach(e => e.classList.contains("lm") ? lm++ : ct++);
-    if (lm < 2 && Math.random() < .5) spawnLabel("lm");
-    if (ct < 3) spawnLabel("city");
-    setTimeout(labelLoop, rnd(1800, 2800));
+    if (activeEls.size < 4) spawnCity();
+    setTimeout(labelLoop, rnd(1600, 2600));
   }
 
   /* ---------- Sound ---------- */
@@ -243,7 +235,6 @@
     return { x: cxC + p.X * R * curScale, y: cyC + p.Y * R * curScale, d: (p.Z + 1) / 2 };
   }
 
-  // Front-weighted random endpoint: favours the visible face, avoids the poles
   function pickDot(t) {
     for (let k = 0; k < 300; k++) {
       const i = Math.floor(Math.random() * N), p = rot(i, t);
@@ -254,7 +245,7 @@
     return Math.floor(Math.random() * N);
   }
 
-  /* ---------- Routes (great-circle arcs that ride the rotating orb) ---------- */
+  /* ---------- Routes ---------- */
   function spawnRoute(t) {
     const busy = new Set();
     routes.forEach(r => { busy.add(r.ia); busy.add(r.ib); });
@@ -263,15 +254,14 @@
       if (ia === ib || busy.has(ia) || busy.has(ib)) continue;
       const A = rot(ia, t), B = rot(ib, t);
       const dot = A.X * B.X + A.Y * B.Y + A.Z * B.Z;
-      if (dot > .6 || dot < -.85) continue;                  // not too close, not near-antipodal
-      if (A.Z + B.Z < -.3) continue;                          // keep the route mostly visible
+      if (dot > .6 || dot < -.85) continue;
+      if (A.Z + B.Z < -.3) continue;
       routes.push({ ia, ib, start: t, dur: 2.6 + Math.acos(clamp(dot, -1, 1)) * 1.1, arrived: false });
       heat[ia] = 1;
       return;
     }
   }
 
-  // Point along the arc from A to B on the sphere, bowed outward so it can cross a pole
   function arcPoint(ia, ib, u, t) {
     const A = rot(ia, t), B = rot(ib, t);
     const dot = clamp(A.X * B.X + A.Y * B.Y + A.Z * B.Z, -1, 1);
@@ -293,7 +283,6 @@
       const t = clamp((elapsed - r.start) / r.dur, 0, 1), e = ease(t);
       const seg = 48;
 
-      // Faint full route
       cx.beginPath();
       for (let s = 0; s <= seg; s++) {
         const p = arcPoint(r.ia, r.ib, s / seg, elapsed);
@@ -301,7 +290,6 @@
       }
       cx.strokeStyle = "rgba(127,176,255,.18)"; cx.lineWidth = 1; cx.stroke();
 
-      // Travelled red trail and moving dot
       if (e > 0) {
         cx.beginPath();
         for (let s = 0; s <= seg; s++) {
@@ -339,7 +327,6 @@
     const elapsed = started ? (now - startTime) / 1000 : 0;
     const mix = started ? clamp(elapsed - ASSEMBLE_TIME + .6, 0, 1) : 0;
 
-    // Slow, delayed heartbeat
     const beatMix = started ? clamp((elapsed - BEAT_DELAY) / 3, 0, 1) : 0;
     const beatT = Math.max(0, elapsed - BEAT_DELAY);
     const ph = (beatT % BEAT_PERIOD) / BEAT_PERIOD;
@@ -350,7 +337,6 @@
       if (bi !== lastBeat) { lastBeat = bi; thump(); }
     }
 
-    // Glow behind the orb
     if (mix > 0) {
       const g = cx.createRadialGradient(cxC, cyC, R * .2, cxC, cyC, R * 1.8 * curScale);
       g.addColorStop(0, `rgba(127,176,255,${.18 * mix + .06 * beat})`);
@@ -359,7 +345,6 @@
       cx.beginPath(); cx.arc(cxC, cyC, R * 1.8 * curScale, 0, Math.PI * 2); cx.fill();
     }
 
-    // Spawn routes (several can run at once)
     if (started && mix >= 1 && routes.length < 4 && elapsed - lastSpawn > nextGap) {
       spawnRoute(elapsed);
       lastSpawn = elapsed;
@@ -367,10 +352,8 @@
     }
     drawRoutes(elapsed);
 
-    // Cool down red highlights
     for (let i = 0; i < N; i++) heat[i] *= Math.exp(-dt / 1.6);
 
-    // Particles
     particles.forEach((p, i) => {
       let px, py, alpha, size = p.r;
       if (!started) {
