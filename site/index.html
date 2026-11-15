@@ -23,13 +23,45 @@
   #enter:hover { background: var(--accent); box-shadow: 0 0 24px rgba(79,140,255,.5); }
   #enter.hidden { opacity: 0; pointer-events: none; }
 
-  #text { position: fixed; left: 0; right: 0; bottom: 12%; text-align: center; z-index: 2; pointer-events: none; }
-  #title { font-size: clamp(2rem, 7vw, 4.5rem); font-weight: 300; letter-spacing: .35em;
-    text-transform: uppercase; opacity: 0; transform: translateY(16px);
-    transition: opacity 1.6s ease, transform 1.6s ease; text-shadow: 0 0 30px rgba(127,176,255,.6); }
-  #tag { margin-top: 1.2rem; font-size: clamp(.8rem, 2vw, 1.1rem); letter-spacing: .3em;
-    text-transform: uppercase; color: var(--muted); opacity: 0; transition: opacity 1.6s ease .9s; }
+  #text { position: fixed; left: 0; top: 0; width: 100%; text-align: center; z-index: 2; pointer-events: none; }
+  #title { font-weight: 300; letter-spacing: .35em; text-transform: uppercase; white-space: nowrap;
+    opacity: 0; transform: translateY(16px); transition: opacity 1.6s ease, transform 1.6s ease;
+    text-shadow: 0 0 30px rgba(127,176,255,.6); }
+  #tag { margin-top: 1.2rem; letter-spacing: .3em; text-transform: uppercase; color: var(--muted);
+    opacity: 0; transition: opacity 1.6s ease .9s; }
   #text.show #title, #text.show #tag { opacity: 1; transform: none; }
+
+  /* News panel */
+  #news { position: fixed; z-index: 3; display: flex; flex-direction: column; opacity: 0;
+    transition: opacity 1.8s ease; pointer-events: none; }
+  #news.show { opacity: 1; pointer-events: auto; }
+  @media (min-width: 761px) {
+    #news { top: 0; bottom: 0; right: 0; width: 50%; padding: 10vh 3.5vw 7vh 2vw; }
+  }
+  @media (max-width: 760px) {
+    #news { left: 0; right: 0; bottom: 0; top: 52%; padding: .8rem 1rem 1rem; }
+  }
+  .news-head { font-size: .7rem; letter-spacing: .3em; text-transform: uppercase; color: var(--glow);
+    margin-bottom: 1rem; }
+  .news-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+  .viewport { position: relative; flex: 1; min-width: 0; overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+            mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent); }
+  .track { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+  .track.smooth { transition: transform .7s ease; }
+  .news-state { font-size: .85rem; color: var(--muted); }
+  .card { background: rgba(12,20,38,.55); border: 1px solid rgba(127,176,255,.14); border-radius: 10px;
+    padding: .85rem 1rem; margin-bottom: .8rem; }
+  .meta { font-size: .64rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: .4rem; }
+  .card h3 { font-size: .98rem; font-weight: 500; line-height: 1.35; margin-bottom: .4rem; }
+  .card h3 a { color: var(--text); text-decoration: none; }
+  .card h3 a:hover { color: var(--glow); }
+  .card p { font-size: .82rem; line-height: 1.5; color: var(--muted); }
+  .dots { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(127,176,255,.5);
+    background: transparent; cursor: pointer; padding: 0; }
+  .dot.on { background: var(--glow); box-shadow: 0 0 8px var(--glow); }
 </style>
 </head>
 <body>
@@ -42,13 +74,34 @@
   <div id="tag">A new era of travel coming soon</div>
 </div>
 
+<section id="news" aria-label="Travel news">
+  <div class="news-head">Travel news</div>
+  <div class="news-body">
+    <div class="viewport" id="viewport">
+      <p class="news-state" id="newsState">Loading headlines…</p>
+      <div class="track" id="track"></div>
+    </div>
+    <div class="dots" id="dots"></div>
+  </div>
+</section>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const cv = $("c"), cx = cv.getContext("2d");
   const bgfx = $("bgfx"), enterBtn = $("enter"), textBox = $("text");
   const titleEl = $("title"), tagEl = $("tag");
+  const newsEl = $("news"), viewport = $("viewport"), track = $("track"),
+        dotsEl = $("dots"), newsState = $("newsState");
   const D = Math.PI / 180;
+
+  /* ---------- Timing ---------- */
+  const ASSEM_DUR = 2.8, MORPH_START = 4.8, MORPH_DUR = 3.6;
+  const ROUTE_START = 10, TEXT_AT = 12;
+  const SHIFT_AT = 20, SHIFT_DUR = 2.2;     // globe moves left, news appears, music stops
+  const BEAT_PERIOD = 2.6, BEAT_DELAY = 12.5;
+  const SCROLL_SPEED = 14;                  // news scroll, px per second
+  const IDLE_RESUME = 5000;                 // ms before auto-scroll resumes after interaction
 
   /* ---------- Content ---------- */
   const CITIES = [
@@ -102,6 +155,7 @@
 
   /* ---------- Helpers ---------- */
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
   const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   const bump = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -125,7 +179,6 @@
   };
   const fromVec = v => ({ lat: Math.asin(clamp(v.y, -1, 1)) / D, lon: Math.atan2(v.x, v.z) / D });
 
-  // Land sample grid, used to move water dots onto the nearest coastline
   const landGrid = [];
   for (let lat = -70; lat <= 80; lat += 4)
     for (let lon = -180; lon < 180; lon += 4)
@@ -142,19 +195,13 @@
 
   /* ---------- Constants ---------- */
   const N = 3600, GOLD = Math.PI * (3 - Math.sqrt(5));
-  const SHOW_OCEAN = true;   // false = glow-only globe
-  const OCEAN_ALPHA = .18;   // strength of the ocean dot texture
-  const PHASE = rnd(0, Math.PI * 2);          // random start angle each visit
-  const TILT = rnd(.15, .35);                 // slight axial tilt
-  const SPIN = .1;                            // rotation speed, eastward like Earth
-  const ASSEM_DUR = 2.8;                      // scattered dots gather into the sphere
-  const MORPH_START = 4.8, MORPH_DUR = 3.6;   // sphere morphs into the map
-  const ROUTE_START = 10;
-  const TEXT_AT = 11;
-  const BEAT_PERIOD = 2.6, BEAT_DELAY = 12.5;
-  const FADE_OUT = 2;                         // seconds for a route's red line to fade after arrival
+  const SHOW_OCEAN = true, OCEAN_ALPHA = .18;
+  const PHASE = rnd(0, Math.PI * 2);
+  const TILT = rnd(.15, .35);
+  const SPIN = .1;
+  const FADE_OUT = 2;
 
-  /* ---------- Particles ---------- */
+  /* ---------- Particles (built once) ---------- */
   const particles = [], landIdx = [];
   for (let i = 0; i < N; i++) {
     const y = 1 - 2 * (i + .5) / N, r = Math.sqrt(1 - y * y), th = i * GOLD + rnd(-.05, .05);
@@ -164,8 +211,7 @@
     if (land) landIdx.push(i);
     particles.push({
       s, m: land ? s : nearestLand(s), land,
-      x: rnd(0, innerWidth), y: rnd(0, innerHeight),
-      vx: rnd(-.2, .2), vy: rnd(-.2, .2),
+      x: 0, y: 0, vx: rnd(-.2, .2), vy: rnd(-.2, .2),
       r: land ? rnd(1.0, 1.8) : rnd(.35, .7),
       delay: rnd(0, 1.2), mdelay: rnd(0, 1.2), sx: 0, sy: 0
     });
@@ -173,20 +219,46 @@
   const heat = new Float32Array(N);
 
   /* ---------- State ---------- */
-  let W = 0, H = 0, cxC = 0, cyC = 0, R = 0, curScale = 1;
-  let started = false, startTime = 0, textShown = false;
+  let W = 0, H = 0, isMobile = false, cxC = 0, cyC = 0, R = 0, curScale = 1;
+  let started = false, startTime = 0, textShown = false, shifted = false;
   let ctx = null, master = null, lastBeat = -1;
   let routes = [], lastSpawn = -99, nextGap = 1.5;
   let lastNow = performance.now();
   const activeEls = new Set();
 
   /* ---------- Layout ---------- */
+  // Globe position and size for shift amount s (0 = full screen, 1 = shifted to the side/top)
+  function geomFor(s) {
+    const full = isMobile
+      ? { x: W / 2, y: H * .42, r: W * .36 }
+      : { x: W / 2, y: H * .42, r: Math.min(W, H) * .18 };
+    const half = isMobile
+      ? { x: W / 2, y: H * .22, r: W * .28 }
+      : { x: W * .25, y: H * .42, r: Math.min(W * .5, H) * .17 };
+    return { x: lerp(full.x, half.x, s), y: lerp(full.y, half.y, s), r: lerp(full.r, half.r, s) };
+  }
+
+  // Title and tagline shrink and move with the globe
+  function updateText(s) {
+    const base = clamp(W * .07, 28, 72);
+    const k = lerp(1, isMobile ? .6 : .62, s);
+    titleEl.style.fontSize = (base * k).toFixed(1) + "px";
+    tagEl.style.fontSize = (clamp(W * .016, 12, 18) * k).toFixed(1) + "px";
+    textBox.style.width = isMobile ? "100%" : (100 - 50 * s) + "%";
+    const h = textBox.offsetHeight;
+    const fullTop = H * .88;
+    const halfTop = isMobile ? H * .40 : H * .70;
+    textBox.style.top = (lerp(fullTop, halfTop, s) - h) + "px";
+  }
+
   function layout() {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
     W = innerWidth; H = innerHeight;
+    isMobile = matchMedia("(max-width: 760px)").matches;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
     cv.width = W * dpr; cv.height = H * dpr;
     cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    cxC = W / 2; cyC = H * .42; R = Math.min(W, H) * .18;
+    particles.forEach(p => { if (!started) { p.x = rnd(0, W); p.y = rnd(0, H); } });
+    if (newsReady) measureNews();
   }
 
   /* ---------- City names ---------- */
@@ -196,6 +268,7 @@
       { x1: cxC - R * 1.5, y1: cyC - R * 1.5, x2: cxC + R * 1.5, y2: cyC + R * 1.5 },
       rectOf(titleEl), rectOf(tagEl), rectOf(enterBtn)
     ];
+    if (newsEl.classList.contains("show")) blocks.push(rectOf(newsEl));
     activeEls.forEach(e => blocks.push(rectOf(e)));
     for (let k = 0; k < 60; k++) {
       const x = rnd(10, W - w - 10), y = rnd(10, H - h - 10);
@@ -297,8 +370,16 @@
     o.start(t); o.stop(t + .65);
   }
 
+  // Music fades out over 2 seconds when the globe shifts left
+  function fadeMusicOut() {
+    if (!ctx) return;
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
+    master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+    setTimeout(() => { if (ctx) { ctx.close(); ctx = null; master = null; } }, 2200);
+  }
+
   /* ---------- 3D math ---------- */
-  // Point on the sphere for particle p at morph amount m (0 = orb, 1 = map)
   function uvAt(p, m) {
     if (m <= 0) return p.s;
     if (m >= 1) return p.m;
@@ -307,7 +388,6 @@
     return { x: x / L, y: y / L, z: z / L };
   }
 
-  // Rotate with the Earth's spin, then apply a slight tilt
   function spin(v, t) {
     const a = t * SPIN + PHASE, sa = Math.sin(a), ca = Math.cos(a);
     const X = v.x * ca + v.z * sa, Z0 = -v.x * sa + v.z * ca;
@@ -320,7 +400,7 @@
     return { x: cxC + p.X * R * curScale, y: cyC - p.Y * R * curScale, d: (p.Z + 1) / 2, Z: p.Z };
   }
 
-  /* ---------- Routes (between land points only) ---------- */
+  /* ---------- Routes (land to land) ---------- */
   function pickLand(t) {
     for (let k = 0; k < 300; k++) {
       const i = landIdx[Math.floor(Math.random() * landIdx.length)];
@@ -348,7 +428,6 @@
     }
   }
 
-  // Point along the great-circle arc from A to B, bowed slightly outward
   function arcAt(A, B, u) {
     const dot = clamp(A.X * B.X + A.Y * B.Y + A.Z * B.Z, -1, 1);
     const w = Math.acos(dot), sw = Math.sin(w);
@@ -363,8 +442,6 @@
     return { x: cxC + X * lift * R * curScale, y: cyC - Y * lift * R * curScale, z: Z };
   }
 
-  // Draws one route: dim maroon full arc, red traveled part, red dot at the front.
-  // After arrival the red part fades over FADE_OUT seconds, then the route is removed.
   function drawRoutes(elapsed) {
     routes = routes.filter(r => elapsed - r.start < r.dur + FADE_OUT);
     for (const r of routes) {
@@ -373,7 +450,6 @@
       const fade = clamp(1 - (elapsed - (r.start + r.dur)) / FADE_OUT, 0, 1);
       const seg = 56;
 
-      // Dim maroon arc showing the full route
       cx.beginPath();
       for (let s = 0; s <= seg; s++) {
         const p = arcAt(A, B, s / seg);
@@ -384,7 +460,6 @@
       cx.stroke();
 
       if (e > 0) {
-        // Red line from the start up to the moving dot (distance travelled)
         cx.beginPath();
         for (let s = 0; s <= seg; s++) {
           const p = arcAt(A, B, e * s / seg);
@@ -394,7 +469,6 @@
         cx.lineWidth = 1.4;
         cx.stroke();
 
-        // Moving red dot
         if (t < 1) {
           const h = arcAt(A, B, e);
           cx.save();
@@ -406,6 +480,123 @@
       }
 
       if (t >= 1 && !r.arrived) { r.arrived = true; heat[r.ib] = 1; }
+    }
+  }
+
+  /* ---------- News panel ---------- */
+  let newsItems = [], newsReady = false, offset = 0, pauseUntil = 0, wrapAt = 0;
+  let viewH = 0, trackH = 0, jumpTimer = null, lastDot = -1;
+
+  const maxOffset = () => Math.max(0, trackH - viewH);
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  }
+
+  function renderNews(items) {
+    track.textContent = "";
+    items.forEach(it => {
+      const card = document.createElement("article");
+      card.className = "card";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = [it.source, (it.categories || [])[0], fmtDate(it.published)]
+        .filter(Boolean).join("  ·  ");
+
+      const h = document.createElement("h3");
+      const a = document.createElement("a");
+      a.href = it.url; a.target = "_blank"; a.rel = "noopener nofollow";
+      a.textContent = it.title;
+      h.appendChild(a);
+
+      const p = document.createElement("p");
+      p.textContent = it.summary || "";
+
+      card.append(meta, h, p);
+      track.appendChild(card);
+    });
+  }
+
+  function applyOffset() {
+    track.style.transform = `translate3d(0, ${-offset}px, 0)`;
+  }
+
+  function buildDots() {
+    dotsEl.textContent = "";
+    const pages = Math.max(1, Math.ceil(trackH / Math.max(viewH, 1)));
+    for (let i = 0; i < pages; i++) {
+      const b = document.createElement("button");
+      b.className = "dot";
+      b.setAttribute("aria-label", `News page ${i + 1}`);
+      b.addEventListener("click", () => jumpTo(Math.min(i * viewH, maxOffset())));
+      dotsEl.appendChild(b);
+    }
+    dotsEl.style.display = pages > 1 ? "" : "none";
+    lastDot = -1;
+  }
+
+  function updateDots() {
+    const n = dotsEl.children.length;
+    if (!n || !viewH) return;
+    const idx = Math.min(n - 1, Math.round(offset / viewH));
+    if (idx === lastDot) return;
+    lastDot = idx;
+    for (let i = 0; i < n; i++) dotsEl.children[i].classList.toggle("on", i === idx);
+  }
+
+  function jumpTo(target) {
+    track.classList.add("smooth");
+    offset = target;
+    applyOffset();
+    pauseUntil = performance.now() + IDLE_RESUME;
+    clearTimeout(jumpTimer);
+    jumpTimer = setTimeout(() => track.classList.remove("smooth"), 750);
+  }
+
+  function measureNews() {
+    viewH = viewport.clientHeight;
+    trackH = track.scrollHeight;
+    buildDots();
+    if (offset > maxOffset()) offset = 0;
+    applyOffset();
+  }
+
+  // Slow upward scroll that loops back to the top at the end
+  function tickNews(now, dt) {
+    if (!newsReady || !newsEl.classList.contains("show")) return;
+    const max = maxOffset();
+    if (max <= 0) return;
+    if (now < pauseUntil) { updateDots(); return; }
+    if (offset >= max) {
+      if (!wrapAt) wrapAt = now + 3000;
+      if (now >= wrapAt) { offset = 0; wrapAt = 0; applyOffset(); }
+      updateDots();
+      return;
+    }
+    offset = Math.min(max, offset + SCROLL_SPEED * dt);
+    applyOffset();
+    updateDots();
+  }
+
+  viewport.addEventListener("mouseenter", () => { pauseUntil = Infinity; });
+  viewport.addEventListener("mouseleave", () => { pauseUntil = performance.now() + 1500; });
+  viewport.addEventListener("touchstart", () => { pauseUntil = Infinity; }, { passive: true });
+  viewport.addEventListener("touchend", () => { pauseUntil = performance.now() + IDLE_RESUME; }, { passive: true });
+
+  async function loadNews() {
+    try {
+      const res = await fetch("/news");
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      newsItems = data.items || [];
+      if (!newsItems.length) throw new Error("empty");
+      renderNews(newsItems);
+      newsState.style.display = "none";
+      newsReady = true;
+      requestAnimationFrame(measureNews);
+    } catch (e) {
+      newsState.textContent = "Travel headlines are loading. Please check back shortly.";
     }
   }
 
@@ -427,9 +618,21 @@
     cx.clearRect(0, 0, W, H);
 
     const elapsed = started ? (now - startTime) / 1000 : 0;
+
+    // Shift: globe, title and tagline move left and shrink; news panel appears; music fades
+    if (started && !shifted && elapsed >= SHIFT_AT) {
+      shifted = true;
+      newsEl.classList.add("show");
+      fadeMusicOut();
+    }
+    const shiftS = started ? ease(clamp((elapsed - SHIFT_AT) / SHIFT_DUR, 0, 1)) : 0;
+    const g = geomFor(shiftS);
+    cxC = g.x; cyC = g.y; R = g.r;
+    updateText(shiftS);
+
     const mix = started ? clamp((elapsed - 3.4) / 1, 0, 1) : 0;
 
-    // Slow, delayed heartbeat (starts once the map has formed)
+    // Slow heartbeat, starts once the map has formed
     const beatMix = started ? clamp((elapsed - BEAT_DELAY) / 3, 0, 1) : 0;
     const beatT = Math.max(0, elapsed - BEAT_DELAY);
     const ph = (beatT % BEAT_PERIOD) / BEAT_PERIOD;
@@ -440,7 +643,7 @@
       if (bi !== lastBeat) { lastBeat = bi; thump(); }
     }
 
-    // Backlit rim glow: light spilling out from behind the globe
+    // Backlit rim glow
     if (mix > 0) {
       const rr = R * curScale;
       cx.save();
@@ -448,11 +651,11 @@
       cx.arc(cxC, cyC, rr * 1.5, 0, Math.PI * 2);
       cx.arc(cxC, cyC, rr * .98, 0, Math.PI * 2, true);
       cx.clip();
-      const g = cx.createRadialGradient(cxC, cyC, rr * .98, cxC, cyC, rr * 1.5);
-      g.addColorStop(0, `rgba(127,176,255,${.5 * mix + .1 * beat})`);
-      g.addColorStop(.3, `rgba(127,176,255,${.2 * mix})`);
-      g.addColorStop(1, "rgba(127,176,255,0)");
-      cx.fillStyle = g;
+      const grad = cx.createRadialGradient(cxC, cyC, rr * .98, cxC, cyC, rr * 1.5);
+      grad.addColorStop(0, `rgba(127,176,255,${.5 * mix + .1 * beat})`);
+      grad.addColorStop(.3, `rgba(127,176,255,${.2 * mix})`);
+      grad.addColorStop(1, "rgba(127,176,255,0)");
+      cx.fillStyle = grad;
       cx.fillRect(0, 0, W, H);
       cx.restore();
     }
@@ -488,8 +691,8 @@
         size = p.r * (.7 + .6 * P.d);
       }
       const h = heat[i];
-      const r = Math.round(127 + 128 * h), g = Math.round(176 - 106 * h), b = Math.round(255 - 185 * h);
-      cx.fillStyle = `rgba(${r},${g},${b},${clamp(alpha, 0, 1)})`;
+      const r = Math.round(127 + 128 * h), gc = Math.round(176 - 106 * h), b = Math.round(255 - 185 * h);
+      cx.fillStyle = `rgba(${r},${gc},${b},${clamp(alpha, 0, 1)})`;
       cx.beginPath(); cx.arc(px, py, size * (1 + .8 * h), 0, Math.PI * 2); cx.fill();
     }
 
@@ -498,12 +701,14 @@
       textBox.classList.add("show");
     }
 
+    tickNews(now, dt);
     requestAnimationFrame(frame);
   }
 
   addEventListener("resize", layout);
   layout();
   labelLoop();
+  loadNews();
   requestAnimationFrame(frame);
 })();
 </script>
