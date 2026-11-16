@@ -4,7 +4,113 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TRAVADE.AI | A New Era of Travel</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" id="fav" href="data:,">
+<script>
+(() => {
+  const link = document.getElementById("fav");
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const x = c.getContext("2d");
+  const CX = 32, CY = 32, R = 26, D = Math.PI / 180;
+  const START = performance.now();
+  const CYCLE = 3.2;                       // seconds per route
+  const A = { lon: -30, lat: 35 };         // route start (land-side point)
+  const B = { lon: 70, lat: -15 };         // route end
+
+  // Project a lon/lat point onto the rotating globe
+  function proj(p, spin) {
+    const lon = p.lon * D + spin, lat = p.lat * D;
+    return {
+      x: CX + Math.cos(lat) * Math.sin(lon) * R,
+      y: CY - Math.sin(lat) * R,
+      z: Math.cos(lat) * Math.cos(lon)
+    };
+  }
+
+  function draw() {
+    const t = (performance.now() - START) / 1000;
+    const spin = t * 0.5;
+    x.clearRect(0, 0, 64, 64);
+
+    // Globe body
+    const g = x.createRadialGradient(24, 22, 2, CX, CY, R);
+    g.addColorStop(0, "#1f3566");
+    g.addColorStop(1, "#04060c");
+    x.fillStyle = g;
+    x.beginPath(); x.arc(CX, CY, R, 0, Math.PI * 2); x.fill();
+
+    // Rotating meridians
+    x.save();
+    x.beginPath(); x.arc(CX, CY, R, 0, Math.PI * 2); x.clip();
+    x.strokeStyle = "rgba(127,176,255,.5)";
+    x.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const k = Math.cos(spin + i * Math.PI / 4);
+      x.beginPath();
+      x.ellipse(CX, CY, Math.max(0.5, R * Math.abs(k)), R, 0, 0, Math.PI * 2);
+      x.stroke();
+    }
+    // Latitude lines
+    for (const d of [-10, 10]) {
+      const half = Math.sqrt(R * R - d * d);
+      x.beginPath();
+      x.moveTo(CX - half, CY + d); x.lineTo(CX + half, CY + d);
+      x.stroke();
+    }
+    x.restore();
+
+    // Route arc between A and B, bowed outward from the globe centre
+    const a = proj(A, spin), b = proj(B, spin);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = mx - CX, dy = my - CY, len = Math.hypot(dx, dy) || 1;
+    const cx2 = mx + dx / len * 10, cy2 = my + dy / len * 10;
+    const pt = u => ({
+      x: (1 - u) ** 2 * a.x + 2 * (1 - u) * u * cx2 + u * u * b.x,
+      y: (1 - u) ** 2 * a.y + 2 * (1 - u) * u * cy2 + u * u * b.y
+    });
+
+    // Faint full route
+    x.beginPath();
+    for (let s = 0; s <= 30; s++) {
+      const p = pt(s / 30);
+      s ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y);
+    }
+    x.strokeStyle = "rgba(127,176,255,.25)";
+    x.lineWidth = 1;
+    x.stroke();
+
+    // Red travelled section and moving dot
+    const phase = (t % CYCLE) / (CYCLE * 0.8);
+    const u = Math.min(1, phase);
+    const e = u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+    if (e > 0) {
+      x.beginPath();
+      for (let s = 0; s <= 30; s++) {
+        const p = pt(e * s / 30);
+        s ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y);
+      }
+      x.strokeStyle = "#ff4b4b";
+      x.lineWidth = 2;
+      x.stroke();
+
+      const h = pt(e);
+      x.fillStyle = "#ff3b3b";
+      x.shadowColor = "#ff3b3b"; x.shadowBlur = 4;
+      x.beginPath(); x.arc(h.x, h.y, 2.6, 0, Math.PI * 2); x.fill();
+      x.shadowBlur = 0;
+    }
+
+    // Endpoint markers
+    x.fillStyle = "#7fb0ff";
+    x.beginPath(); x.arc(a.x, a.y, 1.6, 0, Math.PI * 2); x.fill();
+    x.beginPath(); x.arc(b.x, b.y, 1.6, 0, Math.PI * 2); x.fill();
+
+    link.href = c.toDataURL("image/png");
+    setTimeout(draw, 90);
+  }
+  draw();
+})();
+</script>
 <style>
   :root { --bg:#04060c; --accent:#4f8cff; --glow:#7fb0ff; --text:#e8edf7; --muted:#9aa6bf; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
