@@ -44,11 +44,13 @@
   .news-head { font-size: .7rem; letter-spacing: .3em; text-transform: uppercase; color: var(--glow);
     margin-bottom: 1rem; }
   .news-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
-  .viewport { position: relative; flex: 1; min-width: 0; overflow: hidden;
-    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
-            mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent); }
-  .track { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
-  .track.smooth { transition: transform .7s ease; }
+  .viewport { position: relative; flex: 1; min-width: 0; min-height: 0; height: 100%;
+    overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+    scrollbar-width: none; -ms-overflow-style: none;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent);
+            mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 94%, transparent); }
+  .viewport::-webkit-scrollbar { display: none; }
+  .track { position: relative; }
   .news-state { font-size: .85rem; color: var(--muted); }
   .card { background: rgba(12,20,38,.55); border: 1px solid rgba(127,176,255,.14); border-radius: 10px;
     padding: .85rem 1rem; margin-bottom: .8rem; }
@@ -98,9 +100,9 @@
   /* ---------- Timing ---------- */
   const ASSEM_DUR = 2.8, MORPH_START = 4.8, MORPH_DUR = 3.6;
   const ROUTE_START = 10, TEXT_AT = 12;
-  const SHIFT_AT = 20, SHIFT_DUR = 2.2;     // globe moves left, news appears, music stops
+  const SHIFT_AT = 17, SHIFT_DUR = 2.2;     // globe moves left, news appears, music stops
   const BEAT_PERIOD = 2.6, BEAT_DELAY = 12.5;
-  const SCROLL_SPEED = 14;                  // news scroll, px per second
+  const SCROLL_SPEED = 14;                  // news auto-scroll, px per second
   const IDLE_RESUME = 5000;                 // ms before auto-scroll resumes after interaction
 
   /* ---------- Content ---------- */
@@ -292,7 +294,7 @@
     el.style.top = spot.y + "px";
     activeEls.add(el);
     const anim = el.animate(
-      [{ opacity: 0 }, { opacity: .4, offset: .5 }, { opacity: 0 }],
+      [{ opacity: 0 }, { opacity: .55, offset: .5 }, { opacity: 0 }],
       { duration: 7000, easing: "ease-in-out" }
     );
     anim.onfinish = () => { activeEls.delete(el); el.remove(); };
@@ -484,17 +486,36 @@
   }
 
   /* ---------- News panel ---------- */
-  let newsItems = [], newsReady = false, offset = 0, pauseUntil = 0, wrapAt = 0;
-  let viewH = 0, trackH = 0, jumpTimer = null, lastDot = -1;
+  let newsReady = false, typingStarted = false;
+  let pauseUntil = 0, wrapAt = 0, offset = 0, lastDot = -1;
+  const cardRefs = [];
 
-  const maxOffset = () => Math.max(0, trackH - viewH);
+  const scrollMax = () => Math.max(0, viewport.scrollHeight - viewport.clientHeight);
 
   function fmtDate(iso) {
     return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   }
 
+  // Text is laid out in full from the start; untyped characters are transparent,
+  // so the layout never shifts while the typewriter runs.
+  function splitText(el, text) {
+    el.textContent = "";
+    const typed = document.createElement("span");
+    const rest = document.createElement("span");
+    rest.style.color = "transparent";
+    rest.textContent = text;
+    el.append(typed, rest);
+    return { full: text, typed, rest };
+  }
+
+  function setTyped(ref, n) {
+    ref.typed.textContent = ref.full.slice(0, n);
+    ref.rest.textContent = ref.full.slice(n);
+  }
+
   function renderNews(items) {
     track.textContent = "";
+    cardRefs.length = 0;
     items.forEach(it => {
       const card = document.createElement("article");
       card.className = "card";
@@ -507,29 +528,47 @@
       const h = document.createElement("h3");
       const a = document.createElement("a");
       a.href = it.url; a.target = "_blank"; a.rel = "noopener nofollow";
-      a.textContent = it.title;
       h.appendChild(a);
 
       const p = document.createElement("p");
-      p.textContent = it.summary || "";
 
       card.append(meta, h, p);
       track.appendChild(card);
+      cardRefs.push({ t: splitText(a, it.title), s: splitText(p, it.summary || "") });
     });
   }
 
-  function applyOffset() {
-    track.style.transform = `translate3d(0, ${-offset}px, 0)`;
+  // Types one card (title, then summary); duration scales with length
+  function typeCard(c) {
+    const total = c.t.full.length + c.s.full.length;
+    const dur = clamp(total * 9, 350, 1000);
+    return new Promise(resolve => {
+      const t0 = performance.now();
+      const step = now => {
+        const p = Math.min(1, (now - t0) / dur);
+        const n = Math.floor(p * total);
+        setTyped(c.t, Math.min(n, c.t.full.length));
+        setTyped(c.s, Math.max(0, n - c.t.full.length));
+        if (p < 1) requestAnimationFrame(step); else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  // Cards type in order from the top
+  async function typeNews() {
+    for (const c of cardRefs) await typeCard(c);
   }
 
   function buildDots() {
     dotsEl.textContent = "";
-    const pages = Math.max(1, Math.ceil(trackH / Math.max(viewH, 1)));
+    const vh = Math.max(viewport.clientHeight, 1);
+    const pages = Math.max(1, Math.ceil((scrollMax() + vh) / vh));
     for (let i = 0; i < pages; i++) {
       const b = document.createElement("button");
       b.className = "dot";
       b.setAttribute("aria-label", `News page ${i + 1}`);
-      b.addEventListener("click", () => jumpTo(Math.min(i * viewH, maxOffset())));
+      b.addEventListener("click", () => jumpTo(i * vh));
       dotsEl.appendChild(b);
     }
     dotsEl.style.display = pages > 1 ? "" : "none";
@@ -538,60 +577,66 @@
 
   function updateDots() {
     const n = dotsEl.children.length;
-    if (!n || !viewH) return;
-    const idx = Math.min(n - 1, Math.round(offset / viewH));
+    const vh = viewport.clientHeight;
+    if (!n || !vh) return;
+    const idx = Math.min(n - 1, Math.round(offset / vh));
     if (idx === lastDot) return;
     lastDot = idx;
     for (let i = 0; i < n; i++) dotsEl.children[i].classList.toggle("on", i === idx);
   }
 
+  function holdScroll(ms) { pauseUntil = performance.now() + ms; }
+
   function jumpTo(target) {
-    track.classList.add("smooth");
-    offset = target;
-    applyOffset();
-    pauseUntil = performance.now() + IDLE_RESUME;
-    clearTimeout(jumpTimer);
-    jumpTimer = setTimeout(() => track.classList.remove("smooth"), 750);
+    holdScroll(IDLE_RESUME);
+    offset = clamp(target, 0, scrollMax());
+    viewport.scrollTo({ top: offset, behavior: "smooth" });
+    updateDots();
   }
 
   function measureNews() {
-    viewH = viewport.clientHeight;
-    trackH = track.scrollHeight;
     buildDots();
-    if (offset > maxOffset()) offset = 0;
-    applyOffset();
+    offset = clamp(offset, 0, scrollMax());
+    viewport.scrollTop = offset;
+    updateDots();
   }
+
+  // Keep our offset in step with the user's own scrolling (wheel, touch, scrollbar)
+  viewport.addEventListener("scroll", () => {
+    if (Math.abs(viewport.scrollTop - offset) > 2) offset = viewport.scrollTop;
+    updateDots();
+  }, { passive: true });
+
+  viewport.addEventListener("wheel", () => holdScroll(IDLE_RESUME), { passive: true });
+  viewport.addEventListener("touchstart", () => holdScroll(Infinity), { passive: true });
+  viewport.addEventListener("touchend", () => holdScroll(IDLE_RESUME), { passive: true });
+  viewport.addEventListener("mouseenter", () => holdScroll(Infinity));
+  viewport.addEventListener("mouseleave", () => holdScroll(1500));
 
   // Slow upward scroll that loops back to the top at the end
   function tickNews(now, dt) {
     if (!newsReady || !newsEl.classList.contains("show")) return;
-    const max = maxOffset();
+    const max = scrollMax();
     if (max <= 0) return;
-    if (now < pauseUntil) { updateDots(); return; }
-    if (offset >= max) {
+    if (now < pauseUntil) return;
+    if (offset >= max - 1) {
       if (!wrapAt) wrapAt = now + 3000;
-      if (now >= wrapAt) { offset = 0; wrapAt = 0; applyOffset(); }
-      updateDots();
+      if (now >= wrapAt) { wrapAt = 0; offset = 0; viewport.scrollTop = 0; updateDots(); }
       return;
     }
     offset = Math.min(max, offset + SCROLL_SPEED * dt);
-    applyOffset();
+    viewport.scrollTop = offset;
     updateDots();
   }
-
-  viewport.addEventListener("mouseenter", () => { pauseUntil = Infinity; });
-  viewport.addEventListener("mouseleave", () => { pauseUntil = performance.now() + 1500; });
-  viewport.addEventListener("touchstart", () => { pauseUntil = Infinity; }, { passive: true });
-  viewport.addEventListener("touchend", () => { pauseUntil = performance.now() + IDLE_RESUME; }, { passive: true });
 
   async function loadNews() {
     try {
       const res = await fetch("/news");
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
-      newsItems = data.items || [];
-      if (!newsItems.length) throw new Error("empty");
-      renderNews(newsItems);
+      const items = data.items || [];
+      if (!items.length) throw new Error("empty");
+      renderNews(items);
       newsState.style.display = "none";
       newsReady = true;
       requestAnimationFrame(measureNews);
@@ -619,11 +664,15 @@
 
     const elapsed = started ? (now - startTime) / 1000 : 0;
 
-    // Shift: globe, title and tagline move left and shrink; news panel appears; music fades
+    // Shift: globe, title and tagline move left and shrink; news appears; music fades
     if (started && !shifted && elapsed >= SHIFT_AT) {
       shifted = true;
       newsEl.classList.add("show");
       fadeMusicOut();
+    }
+    if (shifted && newsReady && !typingStarted) {
+      typingStarted = true;
+      typeNews();
     }
     const shiftS = started ? ease(clamp((elapsed - SHIFT_AT) / SHIFT_DUR, 0, 1)) : 0;
     const g = geomFor(shiftS);
