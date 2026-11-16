@@ -100,7 +100,8 @@
   /* ---------- Timing ---------- */
   const ASSEM_DUR = 2.8, MORPH_START = 4.8, MORPH_DUR = 3.6;
   const ROUTE_START = 10, TEXT_AT = 12;
-  const SHIFT_AT = 17, SHIFT_DUR = 2.2;     // globe moves left, news appears, music stops
+  const SHIFT_AT = 15, SHIFT_DUR = 2.2;     // globe moves left, music fades
+  const NEWS_DELAY = 1.5;                   // news fades in this long after the shift starts
   const BEAT_PERIOD = 2.6, BEAT_DELAY = 12.5;
   const SCROLL_SPEED = 14;                  // news auto-scroll, px per second
   const IDLE_RESUME = 5000;                 // ms before auto-scroll resumes after interaction
@@ -222,7 +223,7 @@
 
   /* ---------- State ---------- */
   let W = 0, H = 0, isMobile = false, cxC = 0, cyC = 0, R = 0, curScale = 1;
-  let started = false, startTime = 0, textShown = false, shifted = false;
+  let started = false, startTime = 0, textShown = false, shifted = false, newsShown = false;
   let ctx = null, master = null, lastBeat = -1;
   let routes = [], lastSpawn = -99, nextGap = 1.5;
   let lastNow = performance.now();
@@ -486,9 +487,8 @@
   }
 
   /* ---------- News panel ---------- */
-  let newsReady = false, typingStarted = false;
+  let newsReady = false;
   let pauseUntil = 0, wrapAt = 0, offset = 0, lastDot = -1;
-  const cardRefs = [];
 
   const scrollMax = () => Math.max(0, viewport.scrollHeight - viewport.clientHeight);
 
@@ -496,26 +496,8 @@
     return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   }
 
-  // Text is laid out in full from the start; untyped characters are transparent,
-  // so the layout never shifts while the typewriter runs.
-  function splitText(el, text) {
-    el.textContent = "";
-    const typed = document.createElement("span");
-    const rest = document.createElement("span");
-    rest.style.color = "transparent";
-    rest.textContent = text;
-    el.append(typed, rest);
-    return { full: text, typed, rest };
-  }
-
-  function setTyped(ref, n) {
-    ref.typed.textContent = ref.full.slice(0, n);
-    ref.rest.textContent = ref.full.slice(n);
-  }
-
   function renderNews(items) {
     track.textContent = "";
-    cardRefs.length = 0;
     items.forEach(it => {
       const card = document.createElement("article");
       card.className = "card";
@@ -528,36 +510,15 @@
       const h = document.createElement("h3");
       const a = document.createElement("a");
       a.href = it.url; a.target = "_blank"; a.rel = "noopener nofollow";
+      a.textContent = it.title;
       h.appendChild(a);
 
       const p = document.createElement("p");
+      p.textContent = it.summary || "";
 
       card.append(meta, h, p);
       track.appendChild(card);
-      cardRefs.push({ t: splitText(a, it.title), s: splitText(p, it.summary || "") });
     });
-  }
-
-  // Types one card (title, then summary); duration scales with length
-  function typeCard(c) {
-    const total = c.t.full.length + c.s.full.length;
-    const dur = clamp(total * 9, 350, 1000);
-    return new Promise(resolve => {
-      const t0 = performance.now();
-      const step = now => {
-        const p = Math.min(1, (now - t0) / dur);
-        const n = Math.floor(p * total);
-        setTyped(c.t, Math.min(n, c.t.full.length));
-        setTyped(c.s, Math.max(0, n - c.t.full.length));
-        if (p < 1) requestAnimationFrame(step); else resolve();
-      };
-      requestAnimationFrame(step);
-    });
-  }
-
-  // Cards type in order from the top
-  async function typeNews() {
-    for (const c of cardRefs) await typeCard(c);
   }
 
   function buildDots() {
@@ -615,7 +576,7 @@
 
   // Slow upward scroll that loops back to the top at the end
   function tickNews(now, dt) {
-    if (!newsReady || !newsEl.classList.contains("show")) return;
+    if (!newsReady || !newsShown) return;
     const max = scrollMax();
     if (max <= 0) return;
     if (now < pauseUntil) return;
@@ -664,16 +625,17 @@
 
     const elapsed = started ? (now - startTime) / 1000 : 0;
 
-    // Shift: globe, title and tagline move left and shrink; news appears; music fades
+    // Globe starts moving left at SHIFT_AT and the music fades out
     if (started && !shifted && elapsed >= SHIFT_AT) {
       shifted = true;
-      newsEl.classList.add("show");
       fadeMusicOut();
     }
-    if (shifted && newsReady && !typingStarted) {
-      typingStarted = true;
-      typeNews();
+    // News panel fades in 1.5 seconds after the globe starts moving
+    if (shifted && !newsShown && elapsed >= SHIFT_AT + NEWS_DELAY) {
+      newsShown = true;
+      newsEl.classList.add("show");
     }
+
     const shiftS = started ? ease(clamp((elapsed - SHIFT_AT) / SHIFT_DUR, 0, 1)) : 0;
     const g = geomFor(shiftS);
     cxC = g.x; cyC = g.y; R = g.r;
