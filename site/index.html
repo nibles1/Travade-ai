@@ -5,112 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TRAVADE.AI | A New Era of Travel</title>
 <link rel="icon" id="fav" href="data:,">
-<script>
-(() => {
-  const link = document.getElementById("fav");
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const x = c.getContext("2d");
-  const CX = 32, CY = 32, R = 26, D = Math.PI / 180;
-  const START = performance.now();
-  const CYCLE = 3.2;                       // seconds per route
-  const A = { lon: -30, lat: 35 };         // route start (land-side point)
-  const B = { lon: 70, lat: -15 };         // route end
-
-  // Project a lon/lat point onto the rotating globe
-  function proj(p, spin) {
-    const lon = p.lon * D + spin, lat = p.lat * D;
-    return {
-      x: CX + Math.cos(lat) * Math.sin(lon) * R,
-      y: CY - Math.sin(lat) * R,
-      z: Math.cos(lat) * Math.cos(lon)
-    };
-  }
-
-  function draw() {
-    const t = (performance.now() - START) / 1000;
-    const spin = t * 0.5;
-    x.clearRect(0, 0, 64, 64);
-
-    // Globe body
-    const g = x.createRadialGradient(24, 22, 2, CX, CY, R);
-    g.addColorStop(0, "#1f3566");
-    g.addColorStop(1, "#04060c");
-    x.fillStyle = g;
-    x.beginPath(); x.arc(CX, CY, R, 0, Math.PI * 2); x.fill();
-
-    // Rotating meridians
-    x.save();
-    x.beginPath(); x.arc(CX, CY, R, 0, Math.PI * 2); x.clip();
-    x.strokeStyle = "rgba(127,176,255,.5)";
-    x.lineWidth = 1;
-    for (let i = 0; i < 4; i++) {
-      const k = Math.cos(spin + i * Math.PI / 4);
-      x.beginPath();
-      x.ellipse(CX, CY, Math.max(0.5, R * Math.abs(k)), R, 0, 0, Math.PI * 2);
-      x.stroke();
-    }
-    // Latitude lines
-    for (const d of [-10, 10]) {
-      const half = Math.sqrt(R * R - d * d);
-      x.beginPath();
-      x.moveTo(CX - half, CY + d); x.lineTo(CX + half, CY + d);
-      x.stroke();
-    }
-    x.restore();
-
-    // Route arc between A and B, bowed outward from the globe centre
-    const a = proj(A, spin), b = proj(B, spin);
-    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const dx = mx - CX, dy = my - CY, len = Math.hypot(dx, dy) || 1;
-    const cx2 = mx + dx / len * 10, cy2 = my + dy / len * 10;
-    const pt = u => ({
-      x: (1 - u) ** 2 * a.x + 2 * (1 - u) * u * cx2 + u * u * b.x,
-      y: (1 - u) ** 2 * a.y + 2 * (1 - u) * u * cy2 + u * u * b.y
-    });
-
-    // Faint full route
-    x.beginPath();
-    for (let s = 0; s <= 30; s++) {
-      const p = pt(s / 30);
-      s ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y);
-    }
-    x.strokeStyle = "rgba(127,176,255,.25)";
-    x.lineWidth = 1;
-    x.stroke();
-
-    // Red travelled section and moving dot
-    const phase = (t % CYCLE) / (CYCLE * 0.8);
-    const u = Math.min(1, phase);
-    const e = u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-    if (e > 0) {
-      x.beginPath();
-      for (let s = 0; s <= 30; s++) {
-        const p = pt(e * s / 30);
-        s ? x.lineTo(p.x, p.y) : x.moveTo(p.x, p.y);
-      }
-      x.strokeStyle = "#ff4b4b";
-      x.lineWidth = 2;
-      x.stroke();
-
-      const h = pt(e);
-      x.fillStyle = "#ff3b3b";
-      x.shadowColor = "#ff3b3b"; x.shadowBlur = 4;
-      x.beginPath(); x.arc(h.x, h.y, 2.6, 0, Math.PI * 2); x.fill();
-      x.shadowBlur = 0;
-    }
-
-    // Endpoint markers
-    x.fillStyle = "#7fb0ff";
-    x.beginPath(); x.arc(a.x, a.y, 1.6, 0, Math.PI * 2); x.fill();
-    x.beginPath(); x.arc(b.x, b.y, 1.6, 0, Math.PI * 2); x.fill();
-
-    link.href = c.toDataURL("image/png");
-    setTimeout(draw, 90);
-  }
-  draw();
-})();
-</script>
+<meta name="description" content="travade.ai plans flights and tours with AI guidance, with every booking confirmed by a person. Travel news and updates from TRAVADE LTD.">
 <style>
   :root { --bg:#04060c; --accent:#4f8cff; --glow:#7fb0ff; --text:#e8edf7; --muted:#9aa6bf; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -123,13 +18,6 @@
   .city { position: absolute; opacity: 0; white-space: nowrap; text-transform: uppercase;
     color: var(--muted); letter-spacing: .14em; pointer-events: none; }
 
-  #enter { position: fixed; left: 50%; bottom: 24%; transform: translateX(-50%); z-index: 2;
-    font: inherit; font-size: .85rem; letter-spacing: .35em; padding: .9rem 2.6rem;
-    border-radius: 999px; background: rgba(79,140,255,.08); color: var(--text);
-    border: 1px solid var(--accent); cursor: pointer; transition: background .3s, box-shadow .3s, opacity .6s; }
-  #enter:hover { background: var(--accent); box-shadow: 0 0 24px rgba(79,140,255,.5); }
-  #enter.hidden { opacity: 0; pointer-events: none; }
-
   #text { position: fixed; left: 0; top: 0; width: 100%; text-align: center; z-index: 2; pointer-events: none; }
   #title { font-weight: 300; letter-spacing: .35em; text-transform: uppercase; white-space: nowrap;
     opacity: 0; transform: translateY(16px); transition: opacity 1.6s ease, transform 1.6s ease;
@@ -138,16 +26,28 @@
     opacity: 0; transition: opacity 1.6s ease .9s; }
   #text.show #title, #text.show #tag { opacity: 1; transform: none; }
 
-  /* News panel */
-  #news { position: fixed; z-index: 3; display: flex; flex-direction: column; opacity: 0;
+  #ctas { margin-top: 1.8rem; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+  #ctas.show { opacity: 1; pointer-events: auto; }
+  .cta { font: inherit; font-size: .72rem; letter-spacing: .28em; text-transform: uppercase;
+    padding: .8rem 1.8rem; border-radius: 999px; background: rgba(79,140,255,.08);
+    color: var(--text); border: 1px solid var(--accent); cursor: pointer;
+    transition: background .3s, box-shadow .3s; }
+  .cta:hover { background: var(--accent); box-shadow: 0 0 24px rgba(79,140,255,.5); }
+
+  /* Right-hand panels: news and forms share the same position */
+  #news, #forms { position: fixed; z-index: 3; display: flex; flex-direction: column; opacity: 0;
     transition: opacity 1.8s ease; pointer-events: none; }
-  #news.show { opacity: 1; pointer-events: auto; }
+  #news.show, #forms.show { opacity: 1; pointer-events: auto; }
+  #forms.show { transition-delay: .6s; }
   @media (min-width: 761px) {
-    #news { top: 0; bottom: 0; right: 0; width: 50%; padding: 10vh 3.5vw 7vh 2vw; }
+    #news, #forms { top: 0; bottom: 0; right: 0; width: 50%; padding: 10vh 3.5vw 7vh 2vw; }
   }
   @media (max-width: 760px) {
-    #news { left: 0; right: 0; bottom: 0; top: 52%; padding: .8rem 1rem 1rem; }
+    #news, #forms { left: 0; right: 0; bottom: 0; top: 52%; padding: .8rem 1rem 1rem; }
   }
+
+  /* News */
   .news-head { font-size: .7rem; letter-spacing: .3em; text-transform: uppercase; color: var(--glow);
     margin-bottom: 1rem; }
   .news-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
@@ -171,16 +71,49 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(127,176,255,.5);
     background: transparent; cursor: pointer; padding: 0; }
   .dot.on { background: var(--glow); box-shadow: 0 0 8px var(--glow); }
+
+  /* Forms */
+  .form-wrap { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: .4rem; }
+  .back { font: inherit; font-size: .7rem; letter-spacing: .22em; text-transform: uppercase;
+    background: none; border: none; color: var(--glow); cursor: pointer; padding: 0 0 1.4rem; }
+  .back:hover { color: var(--text); }
+  .form-view { display: none; }
+  .form-view.active { display: block; }
+  .form-view h2 { font-weight: 300; font-size: clamp(1.3rem, 2.4vw, 1.9rem); letter-spacing: .1em;
+    text-transform: uppercase; margin-bottom: .8rem; }
+  .lead { font-size: .88rem; line-height: 1.6; color: var(--muted); margin-bottom: 1.4rem; max-width: 52ch; }
+  .form-view label { display: block; font-size: .66rem; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: .9rem; }
+  .form-view input, .form-view select, .form-view textarea { display: block; width: 100%; margin-top: .35rem;
+    font: inherit; font-size: .9rem; letter-spacing: 0; text-transform: none; color: var(--text);
+    background: rgba(12,20,38,.6); border: 1px solid rgba(127,176,255,.18); border-radius: 8px;
+    padding: .6rem .8rem; }
+  .form-view input:focus, .form-view select:focus, .form-view textarea:focus {
+    outline: none; border-color: rgba(127,176,255,.55); }
+  .form-view select option { background: #0b1222; color: var(--text); }
+  .form-view textarea { resize: vertical; min-height: 110px; }
+  .submit { font: inherit; font-size: .7rem; letter-spacing: .3em; text-transform: uppercase;
+    padding: .75rem 2rem; border-radius: 999px; background: rgba(79,140,255,.1); color: var(--text);
+    border: 1px solid var(--accent); cursor: pointer; margin-top: .3rem; transition: background .3s; }
+  .submit:hover { background: var(--accent); }
+  .submit:disabled { opacity: .6; cursor: default; }
+  .status { font-size: .82rem; color: var(--muted); margin-top: .8rem; min-height: 1.2em; }
+  .address { margin-top: 1.8rem; padding-top: 1rem; border-top: 1px solid rgba(127,176,255,.12);
+    text-align: center; font-size: .68rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
 </style>
 </head>
 <body>
 
 <div id="bgfx"></div>
 <canvas id="c"></canvas>
-<button id="enter">ENTER</button>
+
 <div id="text">
   <div id="title">Travade.ai</div>
   <div id="tag">A new era of travel coming soon</div>
+  <div id="ctas">
+    <button class="cta" id="btnContact" type="button">Contact us</button>
+    <button class="cta" id="btnJoin" type="button">Join the team</button>
+  </div>
 </div>
 
 <section id="news" aria-label="Travel news">
@@ -194,24 +127,88 @@
   </div>
 </section>
 
+<section id="forms" aria-label="Contact and team forms">
+  <div class="form-wrap">
+    <button class="back" id="backNews" type="button">← Back to Travel News</button>
+
+    <div class="form-view" id="contactView">
+      <h2>Contact us</h2>
+      <p class="lead">Questions, feedback or media enquiries. We read every message.</p>
+      <form id="contactForm">
+        <input type="hidden" name="_subject" value="Travade website: Contact us">
+        <input type="hidden" name="form_type" value="Contact us">
+        <label>Email
+          <input type="email" name="email" required autocomplete="email">
+        </label>
+        <label>Subject
+          <select name="subject" required>
+            <option value="General enquiry">General enquiry</option>
+            <option value="Media and press">Media and press</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+        <label>Message
+          <textarea name="message" rows="6" required></textarea>
+        </label>
+        <button class="submit" type="submit">Send message</button>
+        <p class="status" aria-live="polite"></p>
+      </form>
+      <p class="address">TRAVADE LTD, 66 Paul Street, London, EC2A 4NA</p>
+    </div>
+
+    <div class="form-view" id="joinView">
+      <h2>Join the team</h2>
+      <p class="lead">TRAVADE LTD is a travel services company that builds AI into the user experience, helping people plan and book journeys with clarity and confidence. We're looking for people who want to help shape it.</p>
+      <form id="joinForm">
+        <input type="hidden" name="_subject" value="Travade website: Join the team">
+        <input type="hidden" name="form_type" value="Join the team">
+        <label>Name
+          <input type="text" name="name" required autocomplete="name">
+        </label>
+        <label>Email
+          <input type="email" name="email" required autocomplete="email">
+        </label>
+        <label>Expertise
+          <select name="expertise" required>
+            <option value="">Select one</option>
+            <option value="Software and AI">Software and AI</option>
+            <option value="Travel operations">Travel operations</option>
+            <option value="Marketing and content">Marketing and content</option>
+            <option value="Partnerships and sales">Partnerships and sales</option>
+            <option value="Finance and legal">Finance and legal</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+        <label>How would you like to get involved?
+          <textarea name="involvement" rows="6" required></textarea>
+        </label>
+        <button class="submit" type="submit">Send application</button>
+        <p class="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </div>
+</section>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const cv = $("c"), cx = cv.getContext("2d");
-  const bgfx = $("bgfx"), enterBtn = $("enter"), textBox = $("text");
-  const titleEl = $("title"), tagEl = $("tag");
-  const newsEl = $("news"), viewport = $("viewport"), track = $("track"),
+  const bgfx = $("bgfx"), textBox = $("text"), titleEl = $("title"), tagEl = $("tag"), ctasEl = $("ctas");
+  const newsEl = $("news"), formsEl = $("forms"), viewport = $("viewport"), track = $("track"),
         dotsEl = $("dots"), newsState = $("newsState");
+  const contactView = $("contactView"), joinView = $("joinView");
   const D = Math.PI / 180;
+  const FORM_URL = "https://formspree.io/f/mppdrybv";
 
   /* ---------- Timing ---------- */
   const ASSEM_DUR = 2.8, MORPH_START = 4.8, MORPH_DUR = 3.6;
   const ROUTE_START = 10, TEXT_AT = 12;
   const SHIFT_AT = 15, SHIFT_DUR = 2.2;     // globe moves left, music fades
   const NEWS_DELAY = 1.5;                   // news fades in this long after the shift starts
+  const CTA_DELAY = 1.5;                    // buttons appear this long after the news
   const BEAT_PERIOD = 2.6, BEAT_DELAY = 12.5;
-  const SCROLL_SPEED = 14;                  // news auto-scroll, px per second
-  const IDLE_RESUME = 5000;                 // ms before auto-scroll resumes after interaction
+  const SCROLL_SPEED = 14;
+  const IDLE_RESUME = 5000;
 
   /* ---------- Content ---------- */
   const CITIES = [
@@ -330,14 +327,14 @@
 
   /* ---------- State ---------- */
   let W = 0, H = 0, isMobile = false, cxC = 0, cyC = 0, R = 0, curScale = 1;
-  let started = false, startTime = 0, textShown = false, shifted = false, newsShown = false;
-  let ctx = null, master = null, lastBeat = -1;
+  let started = false, startTime = 0, textShown = false, shifted = false, newsShown = false, ctasShown = false;
+  let activePanel = "news";
+  let ctx = null, master = null, lastBeat = -1, audioOn = false;
   let routes = [], lastSpawn = -99, nextGap = 1.5;
   let lastNow = performance.now();
   const activeEls = new Set();
 
   /* ---------- Layout ---------- */
-  // Globe position and size for shift amount s (0 = full screen, 1 = shifted to the side/top)
   function geomFor(s) {
     const full = isMobile
       ? { x: W / 2, y: H * .42, r: W * .36 }
@@ -348,7 +345,6 @@
     return { x: lerp(full.x, half.x, s), y: lerp(full.y, half.y, s), r: lerp(full.r, half.r, s) };
   }
 
-  // Title and tagline shrink and move with the globe
   function updateText(s) {
     const base = clamp(W * .07, 28, 72);
     const k = lerp(1, isMobile ? .6 : .62, s);
@@ -356,8 +352,8 @@
     tagEl.style.fontSize = (clamp(W * .016, 12, 18) * k).toFixed(1) + "px";
     textBox.style.width = isMobile ? "100%" : (100 - 50 * s) + "%";
     const h = textBox.offsetHeight;
-    const fullTop = H * .88;
-    const halfTop = isMobile ? H * .40 : H * .70;
+    const fullTop = H * .84;
+    const halfTop = isMobile ? H * .40 : H * .66;
     textBox.style.top = (lerp(fullTop, halfTop, s) - h) + "px";
   }
 
@@ -376,9 +372,9 @@
     const w = el.offsetWidth, h = el.offsetHeight;
     const blocks = [
       { x1: cxC - R * 1.5, y1: cyC - R * 1.5, x2: cxC + R * 1.5, y2: cyC + R * 1.5 },
-      rectOf(titleEl), rectOf(tagEl), rectOf(enterBtn)
+      rectOf(titleEl), rectOf(tagEl), rectOf(ctasEl)
     ];
-    if (newsEl.classList.contains("show")) blocks.push(rectOf(newsEl));
+    if (shifted) blocks.push(rectOf(activePanel === "news" ? newsEl : formsEl));
     activeEls.forEach(e => blocks.push(rectOf(e)));
     for (let k = 0; k < 60; k++) {
       const x = rnd(10, W - w - 10), y = rnd(10, H - h - 10);
@@ -413,7 +409,7 @@
     setTimeout(labelLoop, rnd(1600, 2600));
   }
 
-  /* ---------- Sound ---------- */
+  /* ---------- Sound (starts on the visitor's first interaction) ---------- */
   function makeHall(seconds = 6, decay = 2) {
     const len = Math.floor(ctx.sampleRate * seconds);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -468,6 +464,14 @@
     shimmer();
   }
 
+  function enableAudio() {
+    if (audioOn) return;
+    audioOn = true;
+    if (!shifted) startAudio();
+  }
+  ["pointerdown", "keydown", "touchstart"].forEach(ev =>
+    document.addEventListener(ev, enableAudio, { once: true, passive: true }));
+
   function thump() {
     if (!ctx) return;
     const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
@@ -480,7 +484,6 @@
     o.start(t); o.stop(t + .65);
   }
 
-  // Music fades out over 2 seconds when the globe shifts left
   function fadeMusicOut() {
     if (!ctx) return;
     master.gain.cancelScheduledValues(ctx.currentTime);
@@ -593,7 +596,49 @@
     }
   }
 
-  /* ---------- News panel ---------- */
+  /* ---------- Panels: news and forms ---------- */
+  function openPanel(which) {
+    activePanel = which;
+    newsEl.classList.toggle("show", which === "news" && newsShown);
+    formsEl.classList.toggle("show", which !== "news");
+    contactView.classList.toggle("active", which === "contact");
+    joinView.classList.toggle("active", which === "join");
+    dotsEl.style.visibility = which === "news" ? "visible" : "hidden";
+  }
+
+  $("btnContact").addEventListener("click", () => openPanel("contact"));
+  $("btnJoin").addEventListener("click", () => openPanel("join"));
+  $("backNews").addEventListener("click", () => openPanel("news"));
+
+  function wireForm(form) {
+    const status = form.querySelector(".status");
+    const btn = form.querySelector(".submit");
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      btn.disabled = true;
+      status.textContent = "Sending…";
+      try {
+        const res = await fetch(FORM_URL, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { Accept: "application/json" }
+        });
+        if (res.ok) {
+          form.reset();
+          status.textContent = "Thank you. Your message has been sent.";
+        } else {
+          status.textContent = "Something went wrong. Please try again, or email info@travade.ai.";
+        }
+      } catch (err) {
+        status.textContent = "Network error. Please try again, or email info@travade.ai.";
+      }
+      btn.disabled = false;
+    });
+  }
+  wireForm($("contactForm"));
+  wireForm($("joinForm"));
+
+  /* ---------- News feed ---------- */
   let newsReady = false;
   let pauseUntil = 0, wrapAt = 0, offset = 0, lastDot = -1;
 
@@ -669,7 +714,6 @@
     updateDots();
   }
 
-  // Keep our offset in step with the user's own scrolling (wheel, touch, scrollbar)
   viewport.addEventListener("scroll", () => {
     if (Math.abs(viewport.scrollTop - offset) > 2) offset = viewport.scrollTop;
     updateDots();
@@ -681,9 +725,8 @@
   viewport.addEventListener("mouseenter", () => holdScroll(Infinity));
   viewport.addEventListener("mouseleave", () => holdScroll(1500));
 
-  // Slow upward scroll that loops back to the top at the end
   function tickNews(now, dt) {
-    if (!newsReady || !newsShown) return;
+    if (!newsReady || !newsShown || activePanel !== "news") return;
     const max = scrollMax();
     if (max <= 0) return;
     if (now < pauseUntil) return;
@@ -713,17 +756,13 @@
     }
   }
 
-  /* ---------- Start ---------- */
+  /* ---------- Start (on page load) ---------- */
   function start() {
     if (started) return;
     started = true;
-    enterBtn.classList.add("hidden");
     particles.forEach(p => { p.sx = p.x; p.sy = p.y; });
     startTime = performance.now();
-    startAudio();
   }
-  enterBtn.addEventListener("click", start);
-  window.addEventListener("keydown", e => { if (e.key === "Enter") start(); });
 
   /* ---------- Main loop ---------- */
   function frame(now) {
@@ -732,15 +771,20 @@
 
     const elapsed = started ? (now - startTime) / 1000 : 0;
 
-    // Globe starts moving left at SHIFT_AT and the music fades out
+    // Globe starts moving left at SHIFT_AT and the music fades
     if (started && !shifted && elapsed >= SHIFT_AT) {
       shifted = true;
       fadeMusicOut();
     }
-    // News panel fades in 1.5 seconds after the globe starts moving
+    // News fades in NEWS_DELAY seconds after the globe starts moving
     if (shifted && !newsShown && elapsed >= SHIFT_AT + NEWS_DELAY) {
       newsShown = true;
-      newsEl.classList.add("show");
+      openPanel("news");
+    }
+    // Contact and Join buttons appear after the news has settled
+    if (newsShown && !ctasShown && elapsed >= SHIFT_AT + NEWS_DELAY + CTA_DELAY) {
+      ctasShown = true;
+      ctasEl.classList.add("show");
     }
 
     const shiftS = started ? ease(clamp((elapsed - SHIFT_AT) / SHIFT_DUR, 0, 1)) : 0;
@@ -825,6 +869,7 @@
 
   addEventListener("resize", layout);
   layout();
+  start();
   labelLoop();
   loadNews();
   requestAnimationFrame(frame);
